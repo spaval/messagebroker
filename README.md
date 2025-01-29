@@ -1,0 +1,89 @@
+# Message Broker
+
+A simple message broker implementation wrapper in Go.
+
+## Features
+
+- Asynchronous message publishing and subscription
+- Topics support
+
+## Installation
+
+```bash
+go get github.com/spaval/messagebroker
+```
+
+## Usage
+
+### Basic Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/spaval/messagebroker/rabbitmq"
+)
+
+func main() {
+
+	config := MessageBrokerConfig{
+		PrefetchCount: 10,
+		URL:           "amqp://devusrboltplatform:aA3kIcQOHyrv@localhost:5672/v1",
+	}
+
+	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config)
+	if err != nil {
+		log.Fatalf("Failed to connect to RabbitMQ or open a channel: %s", err.Error())
+	}
+
+	e := echo.New()
+
+	queueName := "task_q"
+
+	e.POST("/publish", func(c echo.Context) error {
+		var body map[string]any
+
+		if err := c.Bind(&body); err != nil {
+			return c.JSON(http.StatusBadRequest, err.Error())
+		}
+
+		body["time"] = time.Now().UTC()
+
+		if err := conn.Publish(queueName, body); err != nil {
+			return c.JSON(http.StatusConflict, fmt.Sprintf("error publishing. Error: %s", err.Error()))
+		}
+
+		return c.JSON(http.StatusOK, true)
+	})
+
+	go func(key string) {
+		data := make(chan any, 1)
+
+		if err := conn.Consumer(key, data); err != nil {
+			log.Printf("error consuming the queue: %s. Error: %s\n", key, err.Error())
+		}
+
+		for {
+			log.Printf("Message Incoming.... %v", <-data)
+			// business logic
+		}
+	}(queueName)
+
+	e.Start(":3000")
+}
+
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
