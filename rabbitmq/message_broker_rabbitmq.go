@@ -1,6 +1,7 @@
 package rabbitmq
 
 import (
+	"time"
 	"encoding/json"
 
 	"github.com/spaval/messagebroker"
@@ -49,8 +50,13 @@ func (b *MessageBrokerRabbitMQ) Publish(queueName string, message any) error {
 		return err
 	}
 
+	var exchangeName string
+	if b.config.Exchange != nil {
+		exchangeName = b.config.Exchange.Name
+	}
+
 	return b.Channel.Publish(
-		"",
+		exchangeName,
 		queueName,
 		false,
 		false,
@@ -58,6 +64,7 @@ func (b *MessageBrokerRabbitMQ) Publish(queueName string, message any) error {
 			DeliveryMode: amqp.Persistent,
 			ContentType:  "application/json",
 			Body:         body,
+			Timestamp:    time.Now(),
 		})
 }
 
