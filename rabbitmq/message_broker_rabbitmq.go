@@ -68,7 +68,7 @@ func (b *MessageBrokerRabbitMQ) Publish(queueName string, message any) error {
 		})
 }
 
-func (b *MessageBrokerRabbitMQ) Consumer(queueName string, success chan any, fail chan error) error {
+func (b *MessageBrokerRabbitMQ) Consume(queueName string, success chan any, fail chan error) error {
 	if err := setupQueue(b.Channel, queueName); err != nil {
 		return err
 	}
@@ -93,11 +93,9 @@ func (b *MessageBrokerRabbitMQ) Consumer(queueName string, success chan any, fai
 
 	go func(c messagebroker.MessageBrokerConfig) {
 		for msg := range messages {
-			if c.ShouldAckInmediately {
-				if err := msg.Ack(false); err != nil {
-					fail <- err
-					continue
-				}
+			if err := msg.Ack(false); err != nil {
+				fail <- err
+				continue
 			}
 
 			success <- msg.Body
