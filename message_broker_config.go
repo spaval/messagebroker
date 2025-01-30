@@ -2,7 +2,6 @@ package messagebroker
 
 type MessageBrokerConfig struct {
 	URL                  string
-	HasExchange          bool
 	Exchange             *MessageBrokerConfigExchange
 	Consumer             *MessageBrokerConfigConsumer
 	PrefetchCount        int
