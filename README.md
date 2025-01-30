@@ -36,6 +36,9 @@ func main() {
 	config := messagebroker.MessageBrokerConfig{
 		PrefetchCount: 10,
 		URL:           "amqp://guest:guest@localhost:5672/",
+		Consumer: messagebroker.MessageBrokerConfigConsumer{
+			AutoAck: false,
+		}
 	}
 
 	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config)
@@ -79,6 +82,7 @@ func main() {
 			
 			case f := <-fail:
 			 	log.Printf("Error consuming the queue: %s. Error: %s\n", key, f.Error())
+				//conn.Publish("test", "Hola Mundo")
 			}
 
 			// business logic...
