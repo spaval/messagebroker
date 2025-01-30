@@ -15,5 +15,6 @@ type MessageBrokerConfigExchange struct {
 }
 
 type MessageBrokerConfigConsumer struct {
-	Name string
+	Name    string
+	AutoAck bool
 }

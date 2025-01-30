@@ -1,8 +1,8 @@
 package rabbitmq
 
 import (
-	"time"
 	"encoding/json"
+	"time"
 
 	"github.com/spaval/messagebroker"
 	"github.com/streadway/amqp"
@@ -81,7 +81,7 @@ func (b *MessageBrokerRabbitMQ) Consume(queueName string, success chan any, fail
 	messages, err := b.Channel.Consume(
 		queueName,
 		consumerName,
-		false,
+		b.config.Consumer.AutoAck,
 		false,
 		false,
 		false,
@@ -93,12 +93,16 @@ func (b *MessageBrokerRabbitMQ) Consume(queueName string, success chan any, fail
 
 	go func(c messagebroker.MessageBrokerConfig) {
 		for msg := range messages {
-			if err := msg.Ack(false); err != nil {
-				fail <- err
-				continue
+			payload := messagebroker.MessageBrokerPayload{
+				Body:          msg.Body,
+				RoutingKey:    msg.RoutingKey,
+				CorrelationID: msg.CorrelationId,
+				ContentType:   msg.ContentType,
+				Exchange:      msg.Exchange,
+				Ack:           msg.Ack,
 			}
 
-			success <- msg.Body
+			success <- payload
 		}
 	}(b.config)
 
