@@ -35,7 +35,7 @@ func main() {
 
 	config := messagebroker.MessageBrokerConfig{
 		PrefetchCount: 10,
-		URL:           "amqp://devusrboltplatform:aA3kIcQOHyrv@localhost:5672/v1",
+		URL:           "amqp://guest:guest@localhost:5672/",
 	}
 
 	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config)
