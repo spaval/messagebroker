@@ -64,7 +64,7 @@ func main() {
 	})
 
 	go func(key string) {
-		success := make(chan any, 1)
+		success := make(chan messagebroker.MessageBrokerPayload, 1)
 		fail := make(chan error, 1)
 
 		if err := conn.Consumer(key, success, fail); err != nil {
@@ -74,8 +74,8 @@ func main() {
 		for {
 			select {
 			case d := <-success:
-				msg := d.([]byte)
-				log.Printf("Message Incoming.... %v", string(msg))
+				log.Printf("Message Incoming.... %v", string(d.Body))
+				d.Ack(false)
 			
 			case f := <-fail:
 			 	log.Printf("Error consuming the queue: %s. Error: %s\n", key, f.Error())

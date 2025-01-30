@@ -68,7 +68,7 @@ func (b *MessageBrokerRabbitMQ) Publish(queueName string, message any) error {
 		})
 }
 
-func (b *MessageBrokerRabbitMQ) Consume(queueName string, success chan any, fail chan error) error {
+func (b *MessageBrokerRabbitMQ) Consume(queueName string, success chan messagebroker.MessageBrokerPayload, fail chan error) error {
 	if err := setupQueue(b.Channel, queueName); err != nil {
 		return err
 	}
