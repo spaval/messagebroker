@@ -27,12 +27,13 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/spaval/messagebroker"
 	"github.com/spaval/messagebroker/rabbitmq"
 )
 
 func main() {
 
-	config := MessageBrokerConfig{
+	config := messagebroker.MessageBrokerConfig{
 		PrefetchCount: 10,
 		URL:           "amqp://devusrboltplatform:aA3kIcQOHyrv@localhost:5672/v1",
 	}
@@ -63,15 +64,24 @@ func main() {
 	})
 
 	go func(key string) {
-		data := make(chan any, 1)
+		success := make(chan any, 1)
+		fail := make(chan error, 1)
 
-		if err := conn.Consumer(key, data); err != nil {
+		if err := conn.Consumer(key, success, fail); err != nil {
 			log.Printf("error consuming the queue: %s. Error: %s\n", key, err.Error())
 		}
 
 		for {
-			log.Printf("Message Incoming.... %v", <-data)
-			// business logic
+			select {
+			case d := <-success:
+				msg := d.([]byte)
+				log.Printf("Message Incoming.... %v", string(msg))
+			
+			case f := <-fail:
+			 	log.Printf("Error consuming the queue: %s. Error: %s\n", key, f.Error())
+			}
+
+			// business logic...
 		}
 	}(queueName)
 
