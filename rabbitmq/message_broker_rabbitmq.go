@@ -74,14 +74,17 @@ func (b *MessageBrokerRabbitMQ) Consume(queueName string, success chan messagebr
 	}
 
 	var consumerName string
+	var autoAck bool
+
 	if b.config.Consumer != nil {
 		consumerName = b.config.Consumer.Name
+		autoAck = b.config.Consumer.AutoAck
 	}
 
 	messages, err := b.Channel.Consume(
 		queueName,
 		consumerName,
-		b.config.Consumer.AutoAck,
+		autoAck,
 		false,
 		false,
 		false,
