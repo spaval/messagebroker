@@ -72,6 +72,7 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 			<-time.After(time.Duration(b.config.ReconnectDelay) * time.Second)
 
 			_, err := b.connect()
+
 			if err != nil {
 				if retries >= b.config.RetriesCount {
 					err = fmt.Errorf("error: max retries (%d) connection to rabbit", b.config.RetriesCount)
@@ -186,10 +187,12 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 		return nil, err
 	}
 
-	closingChannel := make(chan *amqp.Error)
+	connectionClosingChannel := make(chan *amqp.Error)
+	publisherClosingChannel := make(chan *amqp.Error)
+	consumerClosingChannel := make(chan *amqp.Error)
 
 	b.Connection = conn
-	conn.NotifyClose(closingChannel)
+	conn.NotifyClose(connectionClosingChannel)
 
 	consumerChannel, err := conn.Channel()
 	if err != nil {
@@ -197,7 +200,7 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 	}
 
 	b.ConsumerChannel = consumerChannel
-	consumerChannel.NotifyClose(closingChannel)
+	consumerChannel.NotifyClose(consumerClosingChannel)
 
 	publisherChannel, err := conn.Channel()
 	if err != nil {
@@ -205,7 +208,7 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 	}
 
 	b.PublisherChannel = publisherChannel
-	publisherChannel.NotifyClose(closingChannel)
+	publisherChannel.NotifyClose(publisherClosingChannel)
 
 	if b.config.PrefetchCount > 0 {
 		if err := consumerChannel.Qos(b.config.PrefetchCount, 0, false); err != nil {
@@ -214,11 +217,13 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 	}
 
 	go func() {
-		for {
-			select {
-			case c := <-closingChannel:
-				b.notifyCloseChannel <- errors.New(c.Error())
-			}
+		select {
+		case err := <-connectionClosingChannel:
+			b.notifyCloseChannel <- err
+		case err := <-publisherClosingChannel:
+			b.notifyCloseChannel <- err
+		case err := <-consumerClosingChannel:
+			b.notifyCloseChannel <- err
 		}
 	}()
 
