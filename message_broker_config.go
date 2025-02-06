@@ -2,19 +2,20 @@ package messagebroker
 
 type MessageBrokerConfig struct {
 	URL                  string
-	Exchange             *MessageBrokerConfigExchange
-	Consumer             *MessageBrokerConfigConsumer
-	PrefetchCount        int
 	ShouldAckInmediately bool
+	ShouldReconnect      bool
+	ReconnectDelay       int
+	RetriesCount         int
+	PrefetchCount        int
 }
 
-type MessageBrokerConfigExchange struct {
-	Name    string
-	Type    string
-	Durable bool
-}
-
-type MessageBrokerConfigConsumer struct {
-	Name    string
-	AutoAck bool
+type MessageBrokerDeliveryOptions struct {
+	ExchangeName   string
+	ExchangeType   string
+	MessageDurable bool
+	RoutingKey     string
+	QueueName      string
+	ConsumerTag    string
+	CorrelationID  string
+	NoAck          bool
 }

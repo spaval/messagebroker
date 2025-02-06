@@ -46,6 +46,35 @@ func main() {
 		log.Fatalf("Failed to connect to RabbitMQ or open a channel: %s", err.Error())
 	}
 
+	go func(c messagebroker.MessageBrokerConfig) {
+		endProcess := false
+
+		for {
+			select {
+			case _, ok := <-b.notifyChannelClose:
+				if !ok {
+					b.notifyChannelClose = nil
+				} else {
+					endProcess = true
+				}
+			case _, ok := <-b.notifyConnClose:
+				if !ok {
+					b.notifyConnClose = nil
+				} else {
+					endProcess = true
+				}
+			}
+
+			if endProcess {
+				break
+			}
+		}
+
+		fail <- errors.New("close connection")
+		b.reconnect()
+
+	}(b.config)
+
 	e := echo.New()
 
 	queueName := "task_q"
@@ -82,7 +111,6 @@ func main() {
 			
 			case f := <-fail:
 			 	log.Printf("Error consuming the queue: %s. Error: %s\n", key, f.Error())
-				//conn.Publish("test", "Hola Mundo")
 			}
 
 			// business logic...
