@@ -102,8 +102,14 @@ func (b *MessageBrokerRabbitMQ) Publish(options messagebroker.MessageBrokerDeliv
 	var body []byte
 	var err error
 
-	if err = setupExchangeDeclare(b.PublisherChannel, options); err != nil {
-		return err
+	queueName := options.QueueName
+
+	if options.HasExchange {
+		queueName = options.RoutingKey
+
+		if err = setupExchangeDeclare(b.PublisherChannel, options); err != nil {
+			return err
+		}
 	}
 
 	if body, err = json.Marshal(message); err != nil {
@@ -112,7 +118,7 @@ func (b *MessageBrokerRabbitMQ) Publish(options messagebroker.MessageBrokerDeliv
 
 	return b.PublisherChannel.Publish(
 		options.ExchangeName,
-		options.RoutingKey,
+		queueName,
 		false,
 		false,
 		amqp.Publishing{
@@ -129,16 +135,18 @@ func (b *MessageBrokerRabbitMQ) Consume(options messagebroker.MessageBrokerDeliv
 		return errors.New("The connection is close")
 	}
 
-	if err := setupExchangeDeclare(b.ConsumerChannel, options); err != nil {
-		return err
-	}
-
 	if _, err := setupQueue(b.ConsumerChannel, options); err != nil {
 		return err
 	}
 
-	if err := setupQueueBind(b.ConsumerChannel, options); err != nil {
-		return err
+	if options.HasExchange {
+		if err := setupExchangeDeclare(b.ConsumerChannel, options); err != nil {
+			return err
+		}
+
+		if err := setupQueueBind(b.ConsumerChannel, options); err != nil {
+			return err
+		}
 	}
 
 	messages, err := b.ConsumerChannel.Consume(

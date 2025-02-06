@@ -10,6 +10,7 @@ type MessageBrokerConfig struct {
 }
 
 type MessageBrokerDeliveryOptions struct {
+	HasExchange    bool
 	ExchangeName   string
 	ExchangeType   string
 	MessageDurable bool
