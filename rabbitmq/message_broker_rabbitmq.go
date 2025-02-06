@@ -29,7 +29,7 @@ func NewMessageBrokerRabbitMQ(config messagebroker.MessageBrokerConfig, observer
 		notifyCloseChannel: notifyCloseChannel,
 	}
 
-	conn, err := broker.Connect()
+	conn, err := broker.connect()
 	if err != nil {
 		return nil, err
 	}
@@ -37,51 +37,6 @@ func NewMessageBrokerRabbitMQ(config messagebroker.MessageBrokerConfig, observer
 	broker.Connection = conn
 
 	return broker, nil
-}
-
-func (b *MessageBrokerRabbitMQ) Connect() (*amqp.Connection, error) {
-	conn, err := amqp.Dial(b.config.URL)
-	if err != nil {
-		return nil, err
-	}
-
-	closingChannel := make(chan *amqp.Error)
-
-	b.Connection = conn
-	conn.NotifyClose(closingChannel)
-
-	consumerChannel, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	b.ConsumerChannel = consumerChannel
-	consumerChannel.NotifyClose(closingChannel)
-
-	publisherChannel, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	b.PublisherChannel = publisherChannel
-	publisherChannel.NotifyClose(closingChannel)
-
-	if b.config.PrefetchCount > 0 {
-		if err := consumerChannel.Qos(b.config.PrefetchCount, 0, false); err != nil {
-			return nil, err
-		}
-	}
-
-	go func() {
-		for {
-			select {
-			case c := <-closingChannel:
-				b.notifyCloseChannel <- errors.New(c.Error())
-			}
-		}
-	}()
-
-	return conn, nil
 }
 
 func (b *MessageBrokerRabbitMQ) Notify() {
@@ -116,7 +71,7 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 		if b.Connection.IsClosed() {
 			<-time.After(time.Duration(b.config.ReconnectDelay) * time.Second)
 
-			_, err := b.Connect()
+			_, err := b.connect()
 			if err != nil {
 				if retries >= b.config.RetriesCount {
 					err = fmt.Errorf("error: max retries (%d) connection to rabbit", b.config.RetriesCount)
@@ -215,4 +170,49 @@ func (b *MessageBrokerRabbitMQ) Consume(options messagebroker.MessageBrokerDeliv
 	}(b.config)
 
 	return err
+}
+
+func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
+	conn, err := amqp.Dial(b.config.URL)
+	if err != nil {
+		return nil, err
+	}
+
+	closingChannel := make(chan *amqp.Error)
+
+	b.Connection = conn
+	conn.NotifyClose(closingChannel)
+
+	consumerChannel, err := conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+
+	b.ConsumerChannel = consumerChannel
+	consumerChannel.NotifyClose(closingChannel)
+
+	publisherChannel, err := conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+
+	b.PublisherChannel = publisherChannel
+	publisherChannel.NotifyClose(closingChannel)
+
+	if b.config.PrefetchCount > 0 {
+		if err := consumerChannel.Qos(b.config.PrefetchCount, 0, false); err != nil {
+			return nil, err
+		}
+	}
+
+	go func() {
+		for {
+			select {
+			case c := <-closingChannel:
+				b.notifyCloseChannel <- errors.New(c.Error())
+			}
+		}
+	}()
+
+	return conn, nil
 }
