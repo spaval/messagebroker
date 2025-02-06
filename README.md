@@ -36,44 +36,27 @@ func main() {
 	config := messagebroker.MessageBrokerConfig{
 		PrefetchCount: 10,
 		URL:           "amqp://guest:guest@localhost:5672/",
-		Consumer: messagebroker.MessageBrokerConfigConsumer{
-			AutoAck: false,
-		}
+		NoAck: false,
 	}
 
-	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config)
+	closeCh := make(chan any)
+	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config, nil, closeCh)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ or open a channel: %s", err.Error())
 	}
 
-	go func(c messagebroker.MessageBrokerConfig) {
-		endProcess := false
-
+	go func(c messagebroker.MessageBrokerRabbitMQ) {
 		for {
 			select {
-			case _, ok := <-b.notifyChannelClose:
+			case err, ok := <-closeCh:
 				if !ok {
-					b.notifyChannelClose = nil
-				} else {
-					endProcess = true
+					close(closeCh)
+					c.Notify()
 				}
-			case _, ok := <-b.notifyConnClose:
-				if !ok {
-					b.notifyConnClose = nil
-				} else {
-					endProcess = true
-				}
-			}
-
-			if endProcess {
-				break
 			}
 		}
 
-		fail <- errors.New("close connection")
-		b.reconnect()
-
-	}(b.config)
+	}(conn)
 
 	e := echo.New()
 

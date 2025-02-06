@@ -1,26 +1,5 @@
 package rabbitmq
 
-/*
-Package rabbitmq provides a RabbitMQ implementation of the message broker interface.
-
-This package contains functionality to interact with RabbitMQ message broker, including:
-- Connection and channel management
-- Publishing and consuming messages
-- Error handling
-- Message serialization/deserialization using JSON
-
-Import statement includes required dependencies:
-- encoding/json: For JSON marshaling/unmarshaling of messages
-- errors: For error handling and wrapping
-- fmt: For string formatting and error messages
-- sync: For synchronization primitives
-- time: For timeout and timing operations
-- messagebroker: Core message broker interfaces and types
-- amqp: The official RabbitMQ client library for Go
-
-The package implements the messagebroker.MessageBroker interface defined in the
-github.com/spaval/messagebroker package.
-*/
 import (
 	"encoding/json"
 	"errors"
@@ -37,13 +16,13 @@ type MessageBrokerRabbitMQ struct {
 	observer           *RabbitObserver
 	loading            bool
 	lock               sync.RWMutex
-	notifyCloseChannel chan *amqp.Error
+	notifyCloseChannel chan error
 	Connection         *amqp.Connection
 	ConsumerChannel    *amqp.Channel
 	PublisherChannel   *amqp.Channel
 }
 
-func NewMessageBrokerRabbitMQ(config messagebroker.MessageBrokerConfig, observer *RabbitObserver, notifyCloseChannel chan *amqp.Error) (*MessageBrokerRabbitMQ, error) {
+func NewMessageBrokerRabbitMQ(config messagebroker.MessageBrokerConfig, observer *RabbitObserver, notifyCloseChannel chan error) (*MessageBrokerRabbitMQ, error) {
 	broker := &MessageBrokerRabbitMQ{
 		config:             config,
 		observer:           observer,
@@ -66,8 +45,10 @@ func (b *MessageBrokerRabbitMQ) Connect() (*amqp.Connection, error) {
 		return nil, err
 	}
 
+	closingChannel := make(chan *amqp.Error)
+
 	b.Connection = conn
-	conn.NotifyClose(b.notifyCloseChannel)
+	conn.NotifyClose(closingChannel)
 
 	consumerChannel, err := conn.Channel()
 	if err != nil {
@@ -75,7 +56,7 @@ func (b *MessageBrokerRabbitMQ) Connect() (*amqp.Connection, error) {
 	}
 
 	b.ConsumerChannel = consumerChannel
-	consumerChannel.NotifyClose(b.notifyCloseChannel)
+	consumerChannel.NotifyClose(closingChannel)
 
 	publisherChannel, err := conn.Channel()
 	if err != nil {
@@ -83,13 +64,22 @@ func (b *MessageBrokerRabbitMQ) Connect() (*amqp.Connection, error) {
 	}
 
 	b.PublisherChannel = publisherChannel
-	publisherChannel.NotifyClose(b.notifyCloseChannel)
+	publisherChannel.NotifyClose(closingChannel)
 
 	if b.config.PrefetchCount > 0 {
 		if err := consumerChannel.Qos(b.config.PrefetchCount, 0, false); err != nil {
 			return nil, err
 		}
 	}
+
+	go func() {
+		for {
+			select {
+			case c := <-closingChannel:
+				b.notifyCloseChannel <- errors.New(c.Error())
+			}
+		}
+	}()
 
 	return conn, nil
 }
