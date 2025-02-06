@@ -32,27 +32,31 @@ import (
 )
 
 func main() {
-
 	config := messagebroker.MessageBrokerConfig{
-		PrefetchCount: 10,
-		URL:           "amqp://guest:guest@localhost:5672/",
-		NoAck: false,
+		PrefetchCount:        10,
+		URL:                  "amqp://xxxx:xxxx@localhost:5672/",
+		ShouldAckInmediately: true,
+		ShouldReconnect:      true,
+		ReconnectDelay:       3,
+		RetriesCount:         5,
 	}
 
-	closeCh := make(chan any)
-	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config, nil, closeCh)
+	closing := make(chan error)
+	conn, err := rabbitmq.NewMessageBrokerRabbitMQ(config, nil, closing)
 	if err != nil {
 		log.Fatalf("Failed to connect to RabbitMQ or open a channel: %s", err.Error())
 	}
 
-	go func(c messagebroker.MessageBrokerRabbitMQ) {
+	defer conn.Connection.Close()
+	defer conn.ConsumerChannel.Close()
+	defer conn.PublisherChannel.Close()
+
+	go func(c *rabbitmq.MessageBrokerRabbitMQ) {
 		for {
 			select {
-			case err, ok := <-closeCh:
-				if !ok {
-					close(closeCh)
-					c.Notify()
-				}
+			case err := <-closing:
+				log.Printf("[MESSAGE-BROKER-ERROR]: %v", err)
+				c.Notify()
 			}
 		}
 
@@ -60,7 +64,9 @@ func main() {
 
 	e := echo.New()
 
-	queueName := "task_q"
+	options := messagebroker.MessageBrokerDeliveryOptions{
+		QueueName: "task_q",
+	}
 
 	e.POST("/publish", func(c echo.Context) error {
 		var body map[string]any
@@ -71,34 +77,31 @@ func main() {
 
 		body["time"] = time.Now().UTC()
 
-		if err := conn.Publish(queueName, body); err != nil {
+		if err := conn.Publish(options, body); err != nil {
 			return c.JSON(http.StatusConflict, fmt.Sprintf("error publishing. Error: %s", err.Error()))
 		}
 
 		return c.JSON(http.StatusOK, true)
 	})
 
-	go func(key string) {
+	go func(opts messagebroker.MessageBrokerDeliveryOptions) {
 		success := make(chan messagebroker.MessageBrokerPayload, 1)
 		fail := make(chan error, 1)
 
-		if err := conn.Consumer(key, success, fail); err != nil {
-			log.Printf("error consuming the queue: %s. Error: %s\n", key, err.Error())
+		if err := conn.Consume(options, success, fail); err != nil {
+			log.Printf("error consuming the queue: %s. Error: %s\n", options.QueueName, err.Error())
 		}
 
 		for {
 			select {
-			case d := <-success:
-				log.Printf("Message Incoming.... %v", string(d.Body))
-				d.Ack(false)
-			
-			case f := <-fail:
-			 	log.Printf("Error consuming the queue: %s. Error: %s\n", key, f.Error())
+			case data := <-success:
+				log.Printf("Message Incoming.... %v", string(data.Body))
+				data.Ack(false)
+			case <-fail:
+				log.Printf("Error.... %v", <-fail)
 			}
-
-			// business logic...
 		}
-	}(queueName)
+	}(options)
 
 	e.Start(":3000")
 }
