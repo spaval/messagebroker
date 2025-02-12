@@ -113,8 +113,12 @@ func (b *MessageBrokerRabbitMQ) Publish(options messagebroker.MessageBrokerDeliv
 		}
 	}
 
-	if body, err = json.Marshal(message); err != nil {
-		return err
+	if v, ok := message.([]byte); !ok {
+		if body, err = json.Marshal(message); err != nil {
+			return err
+		}
+	} else {
+		body = v
 	}
 
 	return b.PublisherChannel.Publish(
