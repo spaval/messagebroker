@@ -105,6 +105,10 @@ func (b *MessageBrokerRabbitMQ) Publish(options messagebroker.MessageBrokerDeliv
 		if err = setupExchangeDeclare(b.PublisherChannel, options); err != nil {
 			return err
 		}
+	} else {
+		if _, err := setupQueue(b.PublisherChannel, options); err != nil {
+			return err
+		}
 	}
 
 	if v, ok := message.([]byte); !ok {
