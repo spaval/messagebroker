@@ -194,10 +194,6 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 	b.Connection = conn
 	conn.NotifyClose(connectionClosingChannel)
 
-	if b.ConsumerChannel != nil {
-		b.ConsumerChannel.Close()
-	}
-
 	consumerChannel, err := conn.Channel()
 	if err != nil {
 		return nil, err
@@ -205,10 +201,6 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 
 	b.ConsumerChannel = consumerChannel
 	consumerChannel.NotifyClose(consumerClosingChannel)
-
-	if b.PublisherChannel != nil {
-		b.PublisherChannel.Close()
-	}
 
 	publisherChannel, err := conn.Channel()
 	if err != nil {
