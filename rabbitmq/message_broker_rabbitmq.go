@@ -2,7 +2,6 @@ package rabbitmq
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -64,7 +63,7 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 	retries := 1
 
 	for {
-		if b.Connection.IsClosed() || b.ConsumerChannel == nil || isChannelClosed(b.ConsumerChannel) {
+		if b.Connection.IsClosed() || b.ConsumerChannel == nil || isChannelClosed(b.ConsumerChannel) || b.PublisherChannel == nil || isChannelClosed(b.PublisherChannel) {
 			<-time.After(time.Duration(b.config.ReconnectDelay) * time.Second)
 
 			_, err := b.connect()
@@ -90,7 +89,9 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 
 func (b *MessageBrokerRabbitMQ) Publish(options messagebroker.MessageBrokerDeliveryOptions, message any) error {
 	if b.Connection.IsClosed() {
-		return errors.New("The connection is close")
+		if _, err := b.connect(); err != nil {
+			return err
+		}
 	}
 
 	var body []byte
@@ -130,7 +131,9 @@ func (b *MessageBrokerRabbitMQ) Publish(options messagebroker.MessageBrokerDeliv
 
 func (b *MessageBrokerRabbitMQ) Consume(options messagebroker.MessageBrokerDeliveryOptions, success chan messagebroker.MessageBrokerPayload, fail chan error) error {
 	if b.Connection.IsClosed() {
-		return errors.New("The connection is close")
+		if _, err := b.connect(); err != nil {
+			return err
+		}
 	}
 
 	if _, err := setupQueue(b.ConsumerChannel, options); err != nil {
@@ -191,6 +194,10 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 	b.Connection = conn
 	conn.NotifyClose(connectionClosingChannel)
 
+	if b.ConsumerChannel != nil {
+		b.ConsumerChannel.Close()
+	}
+
 	consumerChannel, err := conn.Channel()
 	if err != nil {
 		return nil, err
@@ -198,6 +205,10 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 
 	b.ConsumerChannel = consumerChannel
 	consumerChannel.NotifyClose(consumerClosingChannel)
+
+	if b.PublisherChannel != nil {
+		b.PublisherChannel.Close()
+	}
 
 	publisherChannel, err := conn.Channel()
 	if err != nil {
