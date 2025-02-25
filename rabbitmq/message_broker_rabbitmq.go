@@ -41,15 +41,12 @@ func NewMessageBrokerRabbitMQ(config messagebroker.MessageBrokerConfig, observer
 
 func (b *MessageBrokerRabbitMQ) Notify() {
 	b.lock.RLock()
-
 	reconnectionLoading := b.loading
+	b.lock.RUnlock()
 
 	if reconnectionLoading {
-		b.lock.RUnlock()
 		return
 	}
-
-	b.lock.RUnlock()
 
 	b.lock.Lock()
 	b.loading = true
@@ -67,12 +64,10 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 	retries := 1
 
 	for {
-
-		if b.Connection.IsClosed() {
+		if b.Connection.IsClosed() || b.ConsumerChannel == nil || isChannelClosed(b.ConsumerChannel) {
 			<-time.After(time.Duration(b.config.ReconnectDelay) * time.Second)
 
 			_, err := b.connect()
-
 			if err != nil {
 				if retries >= b.config.RetriesCount {
 					err = fmt.Errorf("error: max retries (%d) connection to rabbit", b.config.RetriesCount)
@@ -80,7 +75,6 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 				}
 
 				retries++
-
 				continue
 			}
 		}
@@ -90,7 +84,6 @@ func (b *MessageBrokerRabbitMQ) Notify() {
 		b.lock.Unlock()
 
 		b.observer.NotifyAll()
-
 		break
 	}
 }
@@ -232,4 +225,18 @@ func (b *MessageBrokerRabbitMQ) connect() (*amqp.Connection, error) {
 	}()
 
 	return conn, nil
+}
+
+func isChannelClosed(ch *amqp.Channel) bool {
+	errChan := make(chan *amqp.Error, 1)
+	ch.NotifyClose(errChan)
+
+	select {
+	case err := <-errChan:
+		if err != nil {
+			return true
+		}
+	default:
+	}
+	return false
 }
