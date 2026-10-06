@@ -169,16 +169,7 @@ func (b *MessageBrokerRabbitMQ) Consume(options messagebroker.MessageBrokerDeliv
 
 	go func(c messagebroker.MessageBrokerConfig) {
 		for msg := range messages {
-			payload := messagebroker.MessageBrokerPayload{
-				Body:          msg.Body,
-				RoutingKey:    msg.RoutingKey,
-				CorrelationID: msg.CorrelationId,
-				ContentType:   msg.ContentType,
-				Exchange:      msg.Exchange,
-				Ack:           msg.Ack,
-			}
-
-			success <- payload
+			success <- newPayload(msg)
 		}
 	}(b.config)
 
@@ -246,4 +237,30 @@ func isChannelClosed(ch *amqp.Channel) bool {
 	default:
 	}
 	return false
+}
+
+// newPayload maps a delivery onto the payload the consumer receives.
+//
+// It carries Nack and Reject besides Ack because a consumer that can only
+// acknowledge has no way to say "I could not process this": its options are to
+// confirm a message it did not handle, or to leave it unacknowledged until the
+// channel closes. Both of those delay or lose work that the broker is willing
+// to redeliver.
+//
+// The three are methods on the delivery itself, so they already carry its
+// delivery tag; each returns an error when the delivery has no acknowledger,
+// which is the case when the queue was consumed with NoAck.
+func newPayload(msg amqp.Delivery) messagebroker.MessageBrokerPayload {
+	return messagebroker.MessageBrokerPayload{
+		Body:          msg.Body,
+		RoutingKey:    msg.RoutingKey,
+		CorrelationID: msg.CorrelationId,
+		ContentType:   msg.ContentType,
+		Exchange:      msg.Exchange,
+		DeliveryMode:  msg.DeliveryMode,
+		Redelivered:   msg.Redelivered,
+		Ack:           msg.Ack,
+		Nack:          msg.Nack,
+		Reject:        msg.Reject,
+	}
 }
