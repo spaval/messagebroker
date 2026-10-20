@@ -108,6 +108,37 @@ func main() {
 
 ```
 
+### Queue Arguments
+
+`QueueArguments` is optional. Leave it out and the queue is declared exactly as in previous versions.
+
+```go
+options := messagebroker.MessageBrokerDeliveryOptions{
+	QueueName:      "task_q",
+	ExchangeName:   "tasks",
+	ExchangeType:   "topic",
+	RoutingKey:     "task.created",
+	MessageDurable: true, // required by quorum and stream queues
+	HasExchange:    true,
+	QueueArguments: messagebroker.QueueArguments{
+		XQueueType:           "quorum",      // "classic", "quorum" or "stream"
+		MessageTTL:           60000,         // milliseconds
+		DeadLetterExchange:   "tasks_dlx",   // receives rejected or expired messages
+		DeadLetterRoutingKey: "task.failed", // optional, keeps the original key when empty
+	},
+}
+
+if err := conn.Consume(options, success, fail); err != nil {
+	log.Printf("error consuming the queue: %s. Error: %s\n", options.QueueName, err.Error())
+}
+```
+
+Keep in mind:
+
+- When `HasExchange` is true, `Publish` only declares the exchange, so the arguments take effect when `Consume` declares the queue.
+- `MessageDurable` applies to both the exchange and the queue.
+- RabbitMQ rejects declaring an existing queue with different arguments (`PRECONDITION_FAILED`). To change the type of an existing queue, delete it and let it be declared again.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
