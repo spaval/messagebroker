@@ -47,6 +47,7 @@ func TestToAMQPTableMapsEveryArgument(t *testing.T) {
 		DeadLetterExchange:   "dlx",
 		DeadLetterRoutingKey: "task_q.dead",
 		XQueueType:           "quorum",
+		DeliveryLimit:        20,
 	})
 
 	expected := amqp.Table{
@@ -54,6 +55,7 @@ func TestToAMQPTableMapsEveryArgument(t *testing.T) {
 		"x-dead-letter-exchange":    "dlx",
 		"x-dead-letter-routing-key": "task_q.dead",
 		"x-queue-type":              "quorum",
+		"x-delivery-limit":          20,
 	}
 
 	if !reflect.DeepEqual(table, expected) {

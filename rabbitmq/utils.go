@@ -82,6 +82,9 @@ func toAMQPTable(args messagebroker.QueueArguments) amqp.Table {
 	if args.XQueueType != "" {
 		table["x-queue-type"] = args.XQueueType
 	}
+	if args.DeliveryLimit > 0 {
+		table["x-delivery-limit"] = args.DeliveryLimit
+	}
 
 	return table
 }

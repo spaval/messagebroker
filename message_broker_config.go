@@ -1,12 +1,17 @@
 package messagebroker
 
 type MessageBrokerConfig struct {
-	URL                  string
+	URL string
+
+	// Deprecated: nothing reads it. Acknowledging is the consumer's decision,
+	// taken through the Ack, Nack and Reject functions on the payload. It is
+	// kept so the applications that set it keep compiling.
 	ShouldAckInmediately bool
-	ShouldReconnect      bool
-	ReconnectDelay       int
-	RetriesCount         int
-	PrefetchCount        int
+
+	ShouldReconnect bool
+	ReconnectDelay  int
+	RetriesCount    int
+	PrefetchCount   int
 }
 
 type MessageBrokerDeliveryOptions struct {
@@ -50,4 +55,13 @@ type QueueArguments struct {
 	// XQueueType is "classic", "quorum" or "stream". Quorum and stream queues
 	// only accept durable declarations, so MessageDurable must be true.
 	XQueueType string
+
+	// DeliveryLimit is how often a message may be redelivered before the broker
+	// gives up on it and dead letters or drops it. Only quorum queues count
+	// deliveries.
+	//
+	// Without it a consumer that requeues what it cannot handle loops on the
+	// same message for good: brokers apply no limit of their own unless a policy
+	// sets one.
+	DeliveryLimit int
 }

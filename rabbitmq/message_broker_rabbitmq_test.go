@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/streadway/amqp"
 )
@@ -159,5 +160,90 @@ func TestTheAcknowledgementsDoNotPanicWithoutAnAcknowledger(t *testing.T) {
 	}
 	if err := payload.Reject(false); err == nil {
 		t.Error("Reject returned no error on a delivery with no acknowledger")
+	}
+}
+
+// closeListeners builds the three notification channels the way connect does,
+// so a test can hand them to watchClose and then emulate amqp's shutdown.
+func closeListeners() (connectionClosing, publisherClosing, consumerClosing chan *amqp.Error) {
+	return make(chan *amqp.Error, 1), make(chan *amqp.Error, 1), make(chan *amqp.Error, 1)
+}
+
+func TestWatchCloseMarksOnlyTheChannelThatWentDown(t *testing.T) {
+	cases := []struct {
+		name              string
+		send              func(conn, pub, cons chan *amqp.Error)
+		expectedConsumer  bool
+		expectedPublisher bool
+	}{
+		{
+			name:              "consumer channel",
+			send:              func(_, _, cons chan *amqp.Error) { cons <- &amqp.Error{Code: 406} },
+			expectedConsumer:  true,
+			expectedPublisher: false,
+		},
+		{
+			name:              "publisher channel",
+			send:              func(_, pub, _ chan *amqp.Error) { pub <- &amqp.Error{Code: 406} },
+			expectedConsumer:  false,
+			expectedPublisher: true,
+		},
+		{
+			// The whole connection going down takes both channels with it.
+			name:              "connection",
+			send:              func(conn, _, _ chan *amqp.Error) { conn <- &amqp.Error{Code: 320} },
+			expectedConsumer:  true,
+			expectedPublisher: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			broker := &MessageBrokerRabbitMQ{notifyCloseChannel: make(chan error, 1)}
+			conn, pub, cons := closeListeners()
+
+			go broker.watchClose(conn, pub, cons)
+			tc.send(conn, pub, cons)
+
+			select {
+			case <-broker.notifyCloseChannel:
+			case <-time.After(time.Second):
+				t.Fatal("watchClose did not forward the close error")
+			}
+
+			if got := broker.consumerChannelClosed.Load(); got != tc.expectedConsumer {
+				t.Errorf("consumerChannelClosed: got %v, expected %v", got, tc.expectedConsumer)
+			}
+			if got := broker.publisherChannelClosed.Load(); got != tc.expectedPublisher {
+				t.Errorf("publisherChannelClosed: got %v, expected %v", got, tc.expectedPublisher)
+			}
+		})
+	}
+}
+
+// A shutdown hands the error to every listener it has registered with a
+// blocking send, and watchClose consumes only the first one. The remaining two
+// must not block, or the connection's reader goroutine freezes and the
+// connection stops delivering and acknowledging anything.
+func TestCloseListenersDoNotBlockAShutdownBroadcast(t *testing.T) {
+	broker := &MessageBrokerRabbitMQ{notifyCloseChannel: make(chan error, 1)}
+	conn, pub, cons := closeListeners()
+
+	go broker.watchClose(conn, pub, cons)
+
+	broadcast := make(chan struct{})
+
+	go func() {
+		for _, listener := range []chan *amqp.Error{conn, pub, cons} {
+			listener <- &amqp.Error{Code: 320, Reason: "connection closed"}
+		}
+
+		close(broadcast)
+	}()
+
+	select {
+	case <-broadcast:
+	case <-time.After(time.Second):
+		t.Fatal("the shutdown broadcast blocked on a listener nobody reads")
 	}
 }
